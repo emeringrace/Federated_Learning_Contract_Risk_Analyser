@@ -1,6 +1,11 @@
 # Federated Learning Contract Risk Analyser
 
+[![GitHub](https://img.shields.io/badge/GitHub-emeringrace%2FFederated_Learning_Contract_Risk_Analyser-blue)](https://github.com/emeringrace/Federated_Learning_Contract_Risk_Analyser)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A privacy-preserving contract clause classification system built using **Federated Learning** (Flower framework) and **transformer-based NLP models** (HuggingFace). Multiple clients collaboratively train a shared global model without sharing their raw data.
+
+**Repository:** https://github.com/emeringrace/Federated_Learning_Contract_Risk_Analyser
 
 ---
 
@@ -127,3 +132,117 @@ Contract data is sensitive — companies can't share legal documents with each o
 ## Results
 
 After 3 federated rounds, the global model is saved in the `global_model/` directory and can be used for inference on new contract clauses.
+
+---
+
+## Setup Instructions
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/emeringrace/Federated_Learning_Contract_Risk_Analyser.git
+cd Federated_Learning_Contract_Risk_Analyser
+```
+
+### 2. Create Virtual Environment (Optional but Recommended)
+
+```bash
+# Using venv
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install --upgrade pip
+pip install flwr torch transformers datasets scikit-learn pandas
+```
+
+### 4. Verify Installation
+
+```bash
+python -c "import flwr; import torch; import transformers; print('All dependencies installed!')"
+```
+
+---
+
+## Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `flwr` | >=1.0.0 | Federated Learning framework |
+| `torch` | >=1.13.0 | Deep learning backend |
+| `transformers` | >=4.30.0 | HuggingFace NLP models |
+| `datasets` | >=2.10.0 | Dataset handling utilities |
+| `scikit-learn` | >=1.2.0 | ML utilities & metrics |
+| `pandas` | >=1.5.0 | Data manipulation |
+
+---
+
+## Troubleshooting
+
+### Issue: "Connection refused" when starting clients
+- **Cause:** Server hasn't started yet or isn't listening on port 5040
+- **Solution:** Always start `server.py` first, wait 2 seconds, then start clients
+
+### Issue: "All 3 clients must connect"
+- **Cause:** Not all 3 client scripts are running
+- **Solution:** Ensure you have 4 terminals open: 1 for server, 1 for each of the 3 clients
+
+### Issue: Out of Memory (CUDA)
+- **Cause:** Batch size too large for GPU
+- **Solution:** Reduce batch size in client code or use CPU (`torch.device('cpu')`)
+
+### Issue: Model files missing in `base_model/` or `global_model/`
+- **Solution:** Run `python split_data.py` to regenerate model files from pretrained weights
+
+---
+
+## File Descriptions
+
+| File | Description |
+|------|-------------|
+| `server.py` | Flower server implementing Federated Averaging (FedAvg) |
+| `client*.py` | Three clients that train locally and send weights to server |
+| `labels.py` | Label mappings for contract clause classification |
+| `split_data.py` | Script to split `clf_df.csv` into client-specific datasets |
+| `base_model/` | Initial pretrained transformer model from HuggingFace |
+| `global_model/` | Aggregated model after each federated round |
+| `data/` | Client-specific training datasets (CSV files) |
+
+---
+
+## License
+
+This project is licensed under the MIT License - see LICENSE file for details.
+
+---
+
+## References
+
+- **Flower Framework:** https://flower.ai/
+- **HuggingFace Transformers:** https://huggingface.co/transformers/
+- **Federated Learning Paper:** https://arxiv.org/abs/1602.05629
+- **GitHub Repository:** https://github.com/emeringrace/Federated_Learning_Contract_Risk_Analyser
+
+---
+
+## Contributing
+
+Contributions are welcome! To contribute:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit changes (`git commit -am 'Add feature'`)
+4. Push to branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
+
+---
+
+## Contact & Support
+
+For questions or issues, please:
+- Open an issue on [GitHub Issues](https://github.com/emeringrace/Federated_Learning_Contract_Risk_Analyser/issues)
+- Check existing issues and documentation first
+- Provide error messages and reproduction steps
