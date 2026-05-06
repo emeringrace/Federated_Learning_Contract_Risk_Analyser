@@ -96,6 +96,259 @@ python client3.py
 
 ---
 
+## NLP: Contract Clause Classification
+
+### Overview
+The system uses **HuggingFace Transformers** for multi-class classification of contract clauses into 32 distinct risk categories.
+
+### Supported Contract Clause Categories (32 Labels)
+
+| Label | Description |
+|-------|-------------|
+| Affiliate License-Licensee | Licensing terms for affiliates as licensee |
+| Affiliate License-Licensor | Licensing terms for affiliates as licensor |
+| Anti-Assignment | Restrictions on assignment of contract |
+| Audit Rights | Rights to audit parties' records |
+| Cap On Liability | Limitation on damages or liability |
+| Change Of Control | Provisions for control changes |
+| Competitive Restriction Exception | Exceptions to non-compete clauses |
+| Covenant Not To Sue | Agreement not to pursue legal action |
+| Exclusivity | Exclusive rights or obligations |
+| Expiration Date | Contract expiration terms |
+| Governing Law | Jurisdiction and applicable law |
+| IP Ownership Assignment | Intellectual property ownership transfer |
+| Irrevocable Or Perpetual License | Long-term or permanent license grants |
+| Joint IP Ownership | Shared IP ownership |
+| License Grant | Permission to use intellectual property |
+| Liquidated Damages | Pre-agreed damage amounts |
+| Minimum Commitment | Minimum usage or purchase requirements |
+| Most Favored Nation | Equal treatment clause |
+| No-Solicit Of Customers | Restriction on customer solicitation |
+| No-Solicit Of Employees | Restriction on employee recruitment |
+| Non-Competition | Non-compete clause |
+| Non-Disparagement | Non-disparagement clause |
+| Non-Transferable License | Non-transferable IP rights |
+| Post-Termination Services | Services after contract ends |
+| Price Restrictions | Pricing control clauses |
+| Renewal Term | Contract renewal conditions |
+| Revenue/Profit Sharing | Revenue or profit sharing terms |
+| ROFR/ROFO/ROFN | Right of first refusal/offer/negotiation |
+| Source Code Escrow | Protection of source code in escrow |
+| Termination For Cause | Grounds for termination |
+| Termination For Convenience | Termination without cause |
+| Warranty | Warranty provisions |
+
+### NLP Architecture
+
+**Model:** HuggingFace `AutoModelForSequenceClassification`
+- **Task:** Multi-class contract clause classification
+- **Input:** Contract clause text (string)
+- **Output:** Predicted clause label (one of 32 categories)
+- **Tokenizer:** Pretrained tokenizer from base model
+- **Max Token Length:** 128 tokens
+- **Framework:** PyTorch + HuggingFace Transformers
+
+### Tokenization Pipeline
+
+```python
+# Input: Raw contract clause text
+"This agreement grants an exclusive license to use the software"
+
+# Tokenization (in client code)
+tokenizer = AutoTokenizer.from_pretrained("./base_model")
+tokens = tokenizer(
+    text,
+    truncation=True,         # Handle long clauses
+    padding="max_length",    # Pad to 128 tokens
+    max_length=128
+)
+
+# Output: Token IDs, attention masks
+# Input to model: [input_ids, attention_mask]
+# Model Output: [logits for 32 classes]
+```
+
+### Model Training Flow (per Client)
+
+```
+Raw Data (CSV)
+    ↓
+Load & Filter by Valid Labels
+    ↓
+Convert to HuggingFace Dataset
+    ↓
+Tokenize (truncate to 128 tokens, pad)
+    ↓
+Initialize Model (32 output classes)
+    ↓
+Fine-tune with Trainer (20 steps per round)
+    ↓
+Send Weights to Server (not raw data!)
+    ↓
+Receive Updated Weights from Server
+```
+
+### Key NLP Components in Code
+
+| File | NLP Responsibility |
+|------|-------------------|
+| `labels.py` | Defines 32 contract clause labels and label-to-ID mapping |
+| `client1.py`, `client2.py`, `client3.py` | Loads tokenizer, prepares datasets, trains transformer model locally |
+| `base_model/` | Pretrained transformer weights and tokenizer |
+| `global_model/` | Aggregated model after federated rounds |
+
+---
+
+## Federated Learning (FL): Architecture & Process
+
+### What is Federated Learning?
+
+Federated Learning is a **distributed machine learning approach** where:
+1. ✅ Data stays on local clients (never sent to server)
+2. ✅ Only **model weights** are shared for aggregation
+3. ✅ Privacy is preserved through distributed training
+4. ✅ A global model is collaboratively trained without centralized data
+
+### Why FL for Contract Analysis?
+
+Contract clauses contain sensitive business and legal information:
+- 🔒 Companies can't share raw contracts with each other or central servers
+- 🤝 Multiple parties need to collaboratively train a shared model
+- 📊 Federated Learning enables this without exposing raw data
+
+### FL Architecture: Flower Framework
+
+**Server-Client Model:**
+```
+┌─────────────────────────────────────┐
+│   Flower Server (FedAvg Strategy)   │
+│  - Round Manager                    │
+│  - Weight Aggregator                │
+│  - Global Model Updater             │
+└──────────┬──────────┬──────────┬────┘
+           │          │          │
+    ┌──────▼──┐ ┌───▼───┐ ┌────▼────┐
+    │ Client 1 │ │Client 2│ │ Client 3 │
+    │ FL Node  │ │FL Node │ │ FL Node  │
+    └──────────┘ └───────┘ └──────────┘
+```
+
+### Training Workflow: Multi-Round Federated Averaging (FedAvg)
+
+**Round 0 (Initialization):**
+```
+Server sends initial weights to all clients
+```
+
+**Round 1, 2, 3:**
+```
+┌─ Server ─────────────────────────────┐
+│ Round 1                               │
+│ 1. Request all clients to train      │
+└──────────────────────────────────────┘
+         ↓
+┌─ Clients (Parallel) ─────────────────┐
+│ Client 1:                             │
+│  - Load local data (client1.csv)      │
+│  - Download global weights            │
+│  - Train 20 steps on local GPU/CPU    │
+│  - Compute weight updates             │
+│  - Send only updates to server        │
+│                                       │
+│ Client 2: (Same process)              │
+│ Client 3: (Same process)              │
+└──────────────────────────────────────┘
+         ↓
+┌─ Server ─────────────────────────────┐
+│ Aggregation (FedAvg):                │
+│ global_weights = avg(                │
+│   client1_weights,                   │
+│   client2_weights,                   │
+│   client3_weights                    │
+│ )                                     │
+│ Save updated global model             │
+└──────────────────────────────────────┘
+         ↓
+Back to Round 2, 3, ...
+```
+
+### FedAvg Algorithm
+
+```
+W(t+1) = (1/K) * Σ w_i(t)
+
+where:
+  W(t+1) = New global weights
+  K      = Number of clients (3)
+  w_i(t) = Weights from client i after local training
+```
+
+### Server Implementation (server.py)
+
+**Custom `SaveModelStrategy` Class:**
+- Extends `FedAvg` aggregation strategy
+- Aggregates weights from 3 clients each round
+- Tracks weight changes between rounds
+- Saves updated global model to `global_model/` after each round
+
+**Server Logic:**
+```python
+class SaveModelStrategy(fl.server.strategy.FedAvg):
+    def aggregate_fit(self, server_round, results, ...):
+        # 1. Collect weights from all clients
+        # 2. Average weights using FedAvg
+        # 3. Compute weight changes
+        # 4. Save to ./global_model/
+        # 5. Return aggregated weights
+```
+
+### Client Implementation (client*.py)
+
+**Flower Client Class:**
+- `get_parameters()` - Returns current model weights
+- `fit()` - Local training loop:
+  - Load local CSV data
+  - Tokenize with transformer tokenizer
+  - Train NLP model for 20 steps
+  - Return updated weights
+- `evaluate()` - Report local accuracy
+
+### Key FL Parameters
+
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| **Number of Rounds** | 3 | Federated training iterations |
+| **Number of Clients** | 3 | Participants in federated setup |
+| **Local Epochs** | 20 steps | Training iterations per client per round |
+| **Batch Size** | 4 | Training batch size per client |
+| **Aggregation Strategy** | FedAvg | Simple averaging of weights |
+| **Server Address** | localhost:5040 | Communication endpoint |
+
+### Communication Flow
+
+```
+Round 1:
+├─ Server → Client 1: "Train with these weights"
+├─ Server → Client 2: "Train with these weights"
+├─ Server → Client 3: "Train with these weights"
+│
+├─ Client 1 → Server: "Here are my updated weights"
+├─ Client 2 → Server: "Here are my updated weights"
+├─ Client 3 → Server: "Here are my updated weights"
+│
+└─ Server: Aggregates → Round 2 begins
+
+(Only weights travel over network, never raw data!)
+```
+
+### Privacy Guarantees
+
+1. **Data Privacy:** Raw contract data never leaves client machines
+2. **Model Privacy:** Only model weights shared (not intermediate activations)
+3. **Aggregation Privacy:** Simple averaging (more sophisticated DP variants possible)
+
+---
+
 ## Key Components
 
 ### Server (`server.py`)
